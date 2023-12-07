@@ -45,6 +45,27 @@ async function run() {
       res.send(result);
     });
 
+    app.patch("/api/v1/admin/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const makeAdmin = {
+        $set: { admin: "admin" },
+      };
+      const result = await userCollection.updateOne(filter, makeAdmin);
+      res.send(result);
+    });
+
+    app.get("/apiv1/users/admin/:email", async (req, res) => {
+      const { email } = req.params;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      let admin = false;
+      if (user) {
+        admin = user?.admin === "admin";
+      }
+      res.send(admin);
+    });
+
     // class related API
 
     app.post("/api/v1/add-class", async (req, res) => {
@@ -53,7 +74,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/api/v1/teacher-classes", async (req, res) => {
+    app.get("/api/v1/classes", async (req, res) => {
       const result = await classCollection.find().toArray();
       res.send(result);
     });
@@ -62,6 +83,13 @@ async function run() {
       const { id } = req.params;
       const query = { _id: new ObjectId(id) };
       const result = await classCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.get("/api/v1/approved-classes", async (req, res) => {
+      const { status } = req.query;
+      const query = { status: "approved" };
+      const result = await classCollection.find(query).toArray();
       res.send(result);
     });
 
@@ -85,6 +113,26 @@ async function run() {
       const { id } = req.params;
       const query = { _id: new ObjectId(id) };
       const result = await classCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    app.patch("/api/v1/approve/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const status = {
+        $set: { status: "approved" },
+      };
+      const result = await classCollection.updateOne(filter, status);
+      res.send(result);
+    });
+
+    app.patch("/api/v1/reject/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const status = {
+        $set: { status: "rejected" },
+      };
+      const result = await classCollection.updateOne(filter, status);
       res.send(result);
     });
 
