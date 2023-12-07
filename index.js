@@ -24,11 +24,17 @@ async function run() {
     const userCollection = client.db("craftDB").collection("users");
     const classCollection = client.db("craftDB").collection("classes");
     const assignmentCollection = client.db("craftDB").collection("assignments");
+    const teacherCollection = client.db("craftDB").collection("teachers");
 
     // user related API
 
     app.post("/api/v1/create-user", async (req, res) => {
       const user = req.body;
+      const query = { email: user.email };
+      const isExist = await userCollection.findOne(query);
+      if (isExist) {
+        return res.send({ message: "user already exist" });
+      }
       const result = await userCollection.insertOne(user);
       res.send(user);
     });
@@ -153,6 +159,39 @@ async function run() {
 
     app.get("/api/v1/assignments", async (req, res) => {
       const result = await assignmentCollection.find().toArray();
+      res.send(result);
+    });
+
+    // teacher related API
+
+    app.post("/api/v1/add-teacher", async (req, res) => {
+      const teacher = req.body;
+      const result = await teacherCollection.insertOne(teacher);
+      res.send(result);
+    });
+
+    app.get("/api/v1/teachers", async (req, res) => {
+      const result = await teacherCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.patch("/api/v1/teacher-approve/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const status = {
+        $set: { status: "approved" },
+      };
+      const result = await teacherCollection.updateOne(filter, status);
+      res.send(result);
+    });
+
+    app.patch("/api/v1/teacher-reject/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const status = {
+        $set: { status: "rejected" },
+      };
+      const result = await teacherCollection.updateOne(filter, status);
       res.send(result);
     });
 
