@@ -1,8 +1,9 @@
 const express = require("express");
 const app = express();
 const cors = require("cors");
-const port = process.env.PORT || 5001;
 require("dotenv").config();
+const port = process.env.PORT || 5001;
+const stripe = require("stripe")(process.env.SECRET_KEY);
 
 app.use(express.json());
 app.use(cors());
@@ -25,6 +26,8 @@ async function run() {
     const classCollection = client.db("craftDB").collection("classes");
     const assignmentCollection = client.db("craftDB").collection("assignments");
     const teacherCollection = client.db("craftDB").collection("teachers");
+    const paymentCollection = client.db("craftDB").collection("payments");
+    const cartCollection = client.db("craftDB").collection("carts");
 
     // user related API
 
@@ -48,6 +51,15 @@ async function run() {
       const { email } = req.params;
       const query = { email: email };
       const result = await userCollection.findOne(query);
+      res.send(result);
+    });
+
+    app.get("/api/v1/approved-user/:email", async (req, res) => {
+      const { email } = req.params;
+      const result = await teacherCollection.findOne(
+        { email: email },
+        { stats: "approved" }
+      );
       res.send(result);
     });
 
@@ -85,6 +97,16 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/api/v1/teacher-class", async (req, res) => {
+      const { email } = req.query;
+      const result = await classCollection
+        .find({
+          instructor_email: email,
+        })
+        .toArray();
+      res.send(result);
+    });
+
     app.get("/api/v1/class/:id", async (req, res) => {
       const { id } = req.params;
       const query = { _id: new ObjectId(id) };
@@ -93,7 +115,7 @@ async function run() {
     });
 
     app.get("/api/v1/approved-classes", async (req, res) => {
-      const { status } = req.query;
+      const { status, email } = req.query;
       const query = { status: "approved" };
       const result = await classCollection.find(query).toArray();
       res.send(result);
@@ -175,6 +197,13 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/api/v1/teacher/:id", async (req, res) => {
+      const { id } = req.body;
+      const query = { _id: new ObjectId(id) };
+      const result = await teacherCollection.findOne(query);
+      res.send(result);
+    });
+
     app.patch("/api/v1/teacher-approve/:id", async (req, res) => {
       const { id } = req.params;
       const filter = { _id: new ObjectId(id) };
@@ -193,6 +222,53 @@ async function run() {
       };
       const result = await teacherCollection.updateOne(filter, status);
       res.send(result);
+    });
+
+    // cart API
+
+    app.post("/api/v1/add-cart", async (req, res) => {
+      const myClass = req.body;
+      const result = await cartCollection.insertOne(myClass);
+      res.send(result);
+    });
+
+    app.get("/api/v1/carts", async (req, res) => {
+      const { email } = req.query;
+      const query = { email: email };
+      const result = await cartCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // payment API
+
+    app.post("/api/v1/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100) || 1;
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({ clientSecret: paymentIntent.client_secret });
+    });
+
+    app.get("/api/v1/payments", async (req, res) => {
+      const { email } = req.query;
+      const query = { email: email };
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.post("/api/v1/add-payment", async (req, res) => {
+      const paymentInfo = req.body;
+      const paymentResult = await paymentCollection.insertOne(paymentInfo);
+      const query = {
+        _id: {
+          $in: paymentInfo.cartIds.map((id) => new ObjectId(id)),
+        },
+      };
+      const result = await cartCollection.deleteMany(query);
+      res.send({ paymentResult, result });
     });
 
     await client.db("admin").command({ ping: 1 });
