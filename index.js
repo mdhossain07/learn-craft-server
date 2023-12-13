@@ -28,6 +28,7 @@ async function run() {
     const teacherCollection = client.db("craftDB").collection("teachers");
     const paymentCollection = client.db("craftDB").collection("payments");
     const cartCollection = client.db("craftDB").collection("carts");
+    const enrollmentCollection = client.db("craftDB").collection("enrollments");
 
     // user related API
 
@@ -73,7 +74,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/apiv1/users/admin/:email", async (req, res) => {
+    app.get("/api/v1/users/admin/:email", async (req, res) => {
       const { email } = req.params;
       const query = { email: email };
       const user = await userCollection.findOne(query);
@@ -81,7 +82,7 @@ async function run() {
       if (user) {
         admin = user?.admin === "admin";
       }
-      res.send(admin);
+      res.send({ admin, user });
     });
 
     // class related API
@@ -111,6 +112,7 @@ async function run() {
       const { id } = req.params;
       const query = { _id: new ObjectId(id) };
       const result = await classCollection.findOne(query);
+      // console.log(result);
       res.send(result);
     });
 
@@ -197,9 +199,9 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/api/v1/teacher/:id", async (req, res) => {
-      const { id } = req.body;
-      const query = { _id: new ObjectId(id) };
+    app.get("/api/v1/teacher/:email", async (req, res) => {
+      const { email } = req.params;
+      const query = { email: email };
       const result = await teacherCollection.findOne(query);
       res.send(result);
     });
@@ -239,6 +241,15 @@ async function run() {
       res.send(result);
     });
 
+    // enrollments API
+
+    app.get("/api/v1/enrollments", async (req, res) => {
+      const { email } = req.query;
+      const query = { user_email: email };
+      const result = await enrollmentCollection.find(query).toArray();
+      res.send(result);
+    });
+
     // payment API
 
     app.post("/api/v1/create-payment-intent", async (req, res) => {
@@ -252,15 +263,42 @@ async function run() {
       res.send({ clientSecret: paymentIntent.client_secret });
     });
 
-    app.get("/api/v1/payments", async (req, res) => {
-      const { email } = req.query;
-      const query = { email: email };
-      const result = await paymentCollection.find(query).toArray();
-      res.send(result);
-    });
-
     app.post("/api/v1/add-payment", async (req, res) => {
       const paymentInfo = req.body;
+      const { classId } = req.body;
+      const [myClassId] = classId;
+
+      const enrollQuery = {
+        _id: {
+          $in: paymentInfo.classId.map((id) => new ObjectId(id)),
+        },
+      };
+
+      const getClass = await classCollection.findOne(enrollQuery);
+
+      const enrollClass = await classCollection.updateOne(
+        { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
+        { $inc: { enrollment: 1 } }
+      );
+
+      const enroll = await enrollmentCollection.insertOne(getClass);
+
+      const updateEnrollment = await enrollmentCollection.updateOne(
+        { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
+        {
+          $set: {
+            user_email: paymentInfo.email,
+          },
+        }
+      );
+
+      // const isExist = await enrollmentCollection.findOne(
+      //   { _id: new ObjectId(myClassId) },
+      //   { user_email: paymentInfo.email }
+      // );
+
+      // console.log(isExist);
+
       const paymentResult = await paymentCollection.insertOne(paymentInfo);
       const query = {
         _id: {
@@ -268,7 +306,20 @@ async function run() {
         },
       };
       const result = await cartCollection.deleteMany(query);
-      res.send({ paymentResult, result });
+      res.send({
+        paymentResult,
+        result,
+        enroll,
+        enrollClass,
+        updateEnrollment,
+      });
+    });
+
+    app.get("/api/v1/payments", async (req, res) => {
+      const { email } = req.query;
+      const query = { email: email };
+      const result = await paymentCollection.find(query).toArray();
+      res.send(result);
     });
 
     await client.db("admin").command({ ping: 1 });
