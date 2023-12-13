@@ -267,52 +267,58 @@ async function run() {
       const paymentInfo = req.body;
       const { classId } = req.body;
       const [myClassId] = classId;
+      console.log(myClassId);
 
-      const enrollQuery = {
-        _id: {
-          $in: paymentInfo.classId.map((id) => new ObjectId(id)),
-        },
+      const classQuery = {
+        _id: new ObjectId(myClassId),
+        user_email: paymentInfo.email,
       };
 
-      const getClass = await classCollection.findOne(enrollQuery);
+      const isExist = await enrollmentCollection.findOne(classQuery);
 
-      const enrollClass = await classCollection.updateOne(
-        { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
-        { $inc: { enrollment: 1 } }
-      );
-
-      const enroll = await enrollmentCollection.insertOne(getClass);
-
-      const updateEnrollment = await enrollmentCollection.updateOne(
-        { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
-        {
-          $set: {
-            user_email: paymentInfo.email,
+      if (isExist) {
+        res.send({ message: "already exists" });
+        return;
+      } else {
+        const enrollQuery = {
+          _id: {
+            $in: paymentInfo.classId.map((id) => new ObjectId(id)),
           },
-        }
-      );
+        };
 
-      // const isExist = await enrollmentCollection.findOne(
-      //   { _id: new ObjectId(myClassId) },
-      //   { user_email: paymentInfo.email }
-      // );
+        const getClass = await classCollection.findOne(enrollQuery);
 
-      // console.log(isExist);
+        const enrollClass = await classCollection.updateOne(
+          { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
+          { $inc: { enrollment: 1 } }
+        );
 
-      const paymentResult = await paymentCollection.insertOne(paymentInfo);
-      const query = {
-        _id: {
-          $in: paymentInfo.cartIds.map((id) => new ObjectId(id)),
-        },
-      };
-      const result = await cartCollection.deleteMany(query);
-      res.send({
-        paymentResult,
-        result,
-        enroll,
-        enrollClass,
-        updateEnrollment,
-      });
+        const enroll = await enrollmentCollection.insertOne(getClass);
+
+        const updateEnrollment = await enrollmentCollection.updateOne(
+          { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
+          {
+            $set: {
+              user_email: paymentInfo.email,
+            },
+          }
+        );
+
+        const paymentResult = await paymentCollection.insertOne(paymentInfo);
+        const query = {
+          _id: {
+            $in: paymentInfo.cartIds.map((id) => new ObjectId(id)),
+          },
+        };
+        const result = await cartCollection.deleteMany(query);
+        res.send({
+          paymentResult,
+          result,
+          enroll,
+          enrollClass,
+          updateEnrollment,
+        });
+      }
     });
 
     app.get("/api/v1/payments", async (req, res) => {
