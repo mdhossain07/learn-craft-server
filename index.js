@@ -25,10 +25,14 @@ async function run() {
     const userCollection = client.db("craftDB").collection("users");
     const classCollection = client.db("craftDB").collection("classes");
     const assignmentCollection = client.db("craftDB").collection("assignments");
+    const postAssignmentCollection = client
+      .db("craftDB")
+      .collection("postAssignments");
     const teacherCollection = client.db("craftDB").collection("teachers");
     const paymentCollection = client.db("craftDB").collection("payments");
     const cartCollection = client.db("craftDB").collection("carts");
     const enrollmentCollection = client.db("craftDB").collection("enrollments");
+    const feedbackCollection = client.db("craftDB").collection("feedbacks");
 
     // user related API
 
@@ -181,8 +185,34 @@ async function run() {
       }
     });
 
+    app.post("/api/v1/post-assignment", async (req, res) => {
+      const assignment = req.body;
+      const result = await postAssignmentCollection.insertOne(assignment);
+      res.send(result);
+    });
+
     app.get("/api/v1/assignments", async (req, res) => {
       const result = await assignmentCollection.find().toArray();
+      res.send(result);
+    });
+
+    app.get("/api/v1/assignment/:id", async (req, res) => {
+      const { id } = req.params;
+      const query = { classId: id };
+      const result = await assignmentCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    app.patch("/api/v1/update-assignment/:id", async (req, res) => {
+      const { id } = req.params;
+      const filter = { classId: id };
+      const updateAssignment = {
+        $inc: { PDA: 1 },
+      };
+      const result = await assignmentCollection.updateOne(
+        filter,
+        updateAssignment
+      );
       res.send(result);
     });
 
@@ -267,7 +297,6 @@ async function run() {
       const paymentInfo = req.body;
       const { classId } = req.body;
       const [myClassId] = classId;
-      console.log(myClassId);
 
       const classQuery = {
         _id: new ObjectId(myClassId),
@@ -277,7 +306,13 @@ async function run() {
       const isExist = await enrollmentCollection.findOne(classQuery);
 
       if (isExist) {
-        res.send({ message: "already exists" });
+        const query = {
+          _id: {
+            $in: paymentInfo.cartIds.map((id) => new ObjectId(id)),
+          },
+        };
+        const result = await cartCollection.deleteMany(query);
+        res.send({ message: "already exists", result });
         return;
       } else {
         const enrollQuery = {
@@ -325,6 +360,19 @@ async function run() {
       const { email } = req.query;
       const query = { email: email };
       const result = await paymentCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // feedback related APIs
+
+    app.post("/api/v1/add-feedback", async (req, res) => {
+      const feedback = req.body;
+      const result = await feedbackCollection.insertOne(feedback);
+      res.send(result);
+    });
+
+    app.get("/api/v1/feedbacks", async (req, res) => {
+      const result = await feedbackCollection.find().toArray();
       res.send(result);
     });
 
