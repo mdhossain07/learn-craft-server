@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
+const jwt = require("jsonwebtoken");
 const port = process.env.PORT || 5001;
 const stripe = require("stripe")(process.env.SECRET_KEY);
 
@@ -34,6 +35,46 @@ async function run() {
     const enrollmentCollection = client.db("craftDB").collection("enrollments");
     const feedbackCollection = client.db("craftDB").collection("feedbacks");
 
+    // jwt related API
+
+    app.post("/jwt", (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.TOKEN_SECRET, {
+        expiresIn: "1h",
+      });
+      res.send({ token });
+    });
+
+    // middlewares
+
+    const verifyToken = (req, res, next) => {
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: "unauthorized access" });
+      }
+
+      const token = req.headers.authorization.split(" ")[1];
+
+      jwt.verify(token, process.env.TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: "unauthorized access" });
+        }
+        req.decoded = decoded;
+
+        next();
+      });
+    };
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const isAdmin = user?.admin === "admin";
+      if (!isAdmin) {
+        return res.status(403).send({ message: "forbidden access" });
+      }
+      next();
+    };
+
     // user related API
 
     app.post("/api/v1/create-user", async (req, res) => {
@@ -47,7 +88,7 @@ async function run() {
       res.send(user);
     });
 
-    app.get("/api/v1/users", async (req, res) => {
+    app.get("/api/v1/users", verifyToken, verifyAdmin, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -78,7 +119,9 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/api/v1/users/admin/:email", async (req, res) => {
+    // admin API
+
+    app.get("/api/v1/users/admin/:email", verifyToken, async (req, res) => {
       const { email } = req.params;
       const query = { email: email };
       const user = await userCollection.findOne(query);
@@ -120,6 +163,13 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/api/v1/recommend-class", async (req, res) => {
+      const result = await classCollection
+        .find({ enrollment: { $gte: 2 } })
+        .toArray();
+      res.send(result);
+    });
+
     app.get("/api/v1/approved-classes", async (req, res) => {
       const { status, email } = req.query;
       const query = { status: "approved" };
@@ -150,25 +200,35 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/api/v1/approve/:id", async (req, res) => {
-      const { id } = req.params;
-      const filter = { _id: new ObjectId(id) };
-      const status = {
-        $set: { status: "approved" },
-      };
-      const result = await classCollection.updateOne(filter, status);
-      res.send(result);
-    });
+    app.patch(
+      "/api/v1/approve/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+        const filter = { _id: new ObjectId(id) };
+        const status = {
+          $set: { status: "approved" },
+        };
+        const result = await classCollection.updateOne(filter, status);
+        res.send(result);
+      }
+    );
 
-    app.patch("/api/v1/reject/:id", async (req, res) => {
-      const { id } = req.params;
-      const filter = { _id: new ObjectId(id) };
-      const status = {
-        $set: { status: "rejected" },
-      };
-      const result = await classCollection.updateOne(filter, status);
-      res.send(result);
-    });
+    app.patch(
+      "/api/v1/reject/:id",
+      verifyToken,
+      verifyAdmin,
+      async (req, res) => {
+        const { id } = req.params;
+        const filter = { _id: new ObjectId(id) };
+        const status = {
+          $set: { status: "rejected" },
+        };
+        const result = await classCollection.updateOne(filter, status);
+        res.send(result);
+      }
+    );
 
     // Assignment related API
 
@@ -194,6 +254,19 @@ async function run() {
     app.get("/api/v1/assignments", async (req, res) => {
       const result = await assignmentCollection.find().toArray();
       res.send(result);
+    });
+
+    app.get("/api/v1/submitted-assignments", async (req, res) => {
+      const { email, id } = req.query;
+      const query = { email: email, assignmentId: id };
+      let isExist = false;
+      const result = await postAssignmentCollection.findOne(query);
+      // console.log(result);
+      if (result?.approved === "yes") {
+        isExist = true;
+      }
+      // console.log(isExist);
+      res.send(isExist);
     });
 
     app.get("/api/v1/assignment/:id", async (req, res) => {
@@ -224,7 +297,7 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/api/v1/teachers", async (req, res) => {
+    app.get("/api/v1/teachers", verifyToken, verifyAdmin, async (req, res) => {
       const result = await teacherCollection.find().toArray();
       res.send(result);
     });
@@ -277,7 +350,8 @@ async function run() {
       const { email } = req.query;
       const query = { user_email: email };
       const result = await enrollmentCollection.find(query).toArray();
-      res.send(result);
+      const totalEnroll = await enrollmentCollection.countDocuments(query);
+      res.send({ result, totalEnroll });
     });
 
     // payment API
@@ -320,15 +394,27 @@ async function run() {
             $in: paymentInfo.classId.map((id) => new ObjectId(id)),
           },
         };
+        const options = {
+          projection: {
+            _id: 0,
+            title: 1,
+            price: 1,
+            instructor_name: 1,
+            image: 1,
+            assignment: 1,
+          },
+        };
 
-        const getClass = await classCollection.findOne(enrollQuery);
+        const getClass = await classCollection.findOne(enrollQuery, options);
 
+        console.log(getClass);
+
+        const enroll = await enrollmentCollection.insertOne(getClass);
+        console.log(enroll);
         const enrollClass = await classCollection.updateOne(
           { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
           { $inc: { enrollment: 1 } }
         );
-
-        const enroll = await enrollmentCollection.insertOne(getClass);
 
         const updateEnrollment = await enrollmentCollection.updateOne(
           { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
