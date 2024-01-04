@@ -177,6 +177,37 @@ async function run() {
       res.send(result);
     });
 
+    app.get(`/api/v1/courses/search`, async (req, res) => {
+      const { search } = req.query;
+      const result = await classCollection
+        .find({
+          title: { $regex: search, $options: "i" },
+        })
+        .toArray();
+      res.send(result);
+    });
+
+    app.get(`/api/v1/courses/sort`, async (req, res) => {
+      const { sort } = req.query;
+      console.log(sort);
+      let sortValue = {};
+      if (sort === "All Courses") {
+        sortValue = {};
+      }
+      // let query = {};
+      // if (sort === "Low To High") {
+      //   sortValue = { price: 1 };
+      // } else if (sort === "High To Low") {
+      //   sortValue = { price: -1 };
+      // } else if (sort === "All Courses") {
+      //   sortValue = {};
+      // }
+      const result = await classCollection.find().sort(sortValue).toArray();
+
+      console.log(result);
+      // res.send(result);
+    });
+
     app.patch("/api/v1/class/:id", async (req, res) => {
       const myClass = req.body;
       const { id } = req.params;
@@ -379,6 +410,8 @@ async function run() {
 
       const isExist = await enrollmentCollection.findOne(classQuery);
 
+      console.log(isExist);
+
       if (isExist) {
         const query = {
           _id: {
@@ -407,10 +440,17 @@ async function run() {
 
         const getClass = await classCollection.findOne(enrollQuery, options);
 
-        console.log(getClass);
+        // console.log(getClass);
 
-        const enroll = await enrollmentCollection.insertOne(getClass);
-        console.log(enroll);
+        const enroll = await enrollmentCollection.insertOne({
+          title: getClass.title,
+          instructor_name: getClass.instructor_name,
+          image: getClass.image,
+          assignment: getClass.assignment,
+          price: getClass.price,
+          user_email: paymentInfo.email,
+        });
+
         const enrollClass = await classCollection.updateOne(
           { _id: { $in: paymentInfo.classId.map((id) => new ObjectId(id)) } },
           { $inc: { enrollment: 1 } }
