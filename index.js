@@ -278,26 +278,62 @@ async function run() {
 
     app.post("/api/v1/post-assignment", async (req, res) => {
       const assignment = req.body;
+      // const query = { _id: new ObjectId(assignment.assignmentId) };
+      // const doc = {
+      //   $set: {
+      //     submittedBy: [..., assignment.email],
+      //   },
+      // };
+      // const updateResult = await assignmentCollection.updateOne(query, doc);
+      // console.log(updateResult);
       const result = await postAssignmentCollection.insertOne(assignment);
       res.send(result);
     });
 
     app.get("/api/v1/assignments", async (req, res) => {
-      const result = await assignmentCollection.find().toArray();
+      const { id } = req.params;
+      const query = { classId: id };
+      const result = await assignmentCollection.find(query).toArray();
       res.send(result);
     });
 
     app.get("/api/v1/submitted-assignments", async (req, res) => {
-      const { email, id } = req.query;
-      const query = { email: email, assignmentId: id };
-      let isExist = false;
-      const result = await postAssignmentCollection.findOne(query);
+      const { email } = req.query;
+      console.log(email);
+
+      const findEmail = await assignmentCollection
+        .find({
+          submittedBy: { $elemMatch: { $eq: email } },
+        })
+        .toArray();
+
+      console.log(findEmail);
+
+      // const result = await assignmentCollection
+      //   .aggregate([
+      //     {
+      //       $lookup: {
+      //         from: "postAssignmentCollection",
+      //         let: { assignmentId: "$_id", submittedBy: "$submittedBy" },
+      //         pipeline: [
+      //           {
+      //             $match: {
+      //               $expr: {
+      //                 $and: [
+      //                   { $eq: ["$assignmentId", "$$assignmentId"] },
+      //                   { $in: ["$email", "$$submittedBy"] },
+      //                 ],
+      //               },
+      //             },
+      //           },
+      //         ],
+      //         as: "matchingPosts",
+      //       },
+      //     },
+      //   ])
+      //   .toArray();
+
       // console.log(result);
-      if (result?.approved === "yes") {
-        isExist = true;
-      }
-      // console.log(isExist);
-      res.send(isExist);
     });
 
     app.get("/api/v1/assignment/:id", async (req, res) => {
@@ -449,6 +485,7 @@ async function run() {
           assignment: getClass.assignment,
           price: getClass.price,
           user_email: paymentInfo.email,
+          classId: myClassId,
         });
 
         const enrollClass = await classCollection.updateOne(
