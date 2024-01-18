@@ -278,14 +278,6 @@ async function run() {
 
     app.post("/api/v1/post-assignment", async (req, res) => {
       const assignment = req.body;
-      // const query = { _id: new ObjectId(assignment.assignmentId) };
-      // const doc = {
-      //   $set: {
-      //     submittedBy: [..., assignment.email],
-      //   },
-      // };
-      // const updateResult = await assignmentCollection.updateOne(query, doc);
-      // console.log(updateResult);
       const result = await postAssignmentCollection.insertOne(assignment);
       res.send(result);
     });
@@ -298,42 +290,25 @@ async function run() {
     });
 
     app.get("/api/v1/submitted-assignments", async (req, res) => {
-      const { email } = req.query;
-      console.log(email);
+      try {
+        const { id, email } = req.query;
+        const query = { email: email, assignmentId: id };
+        const result = await postAssignmentCollection.findOne(query);
+        res.send(result);
+      } catch (err) {
+        console.error("Error Fetching Data");
+      }
+    });
 
-      const findEmail = await assignmentCollection
-        .find({
-          submittedBy: { $elemMatch: { $eq: email } },
-        })
-        .toArray();
-
-      console.log(findEmail);
-
-      // const result = await assignmentCollection
-      //   .aggregate([
-      //     {
-      //       $lookup: {
-      //         from: "postAssignmentCollection",
-      //         let: { assignmentId: "$_id", submittedBy: "$submittedBy" },
-      //         pipeline: [
-      //           {
-      //             $match: {
-      //               $expr: {
-      //                 $and: [
-      //                   { $eq: ["$assignmentId", "$$assignmentId"] },
-      //                   { $in: ["$email", "$$submittedBy"] },
-      //                 ],
-      //               },
-      //             },
-      //           },
-      //         ],
-      //         as: "matchingPosts",
-      //       },
-      //     },
-      //   ])
-      //   .toArray();
-
-      // console.log(result);
+    app.get("/api/v1/assignments-count", async (req, res) => {
+      try {
+        const { email } = req.query;
+        const query = { email: email };
+        const result = await postAssignmentCollection.countDocuments(query);
+        res.send({ result });
+      } catch (err) {
+        console.error("Error Fetching Data");
+      }
     });
 
     app.get("/api/v1/assignment/:id", async (req, res) => {
